@@ -1,4 +1,4 @@
-# 点对点人民币充值 
+# 点对点充值 
 
 在CNY和其它加密数字货币及法币间安全地交易而且无需信任：To safely exchange between CNY and other digital crypt-currencies and fiat currencies without trust
 
@@ -31,13 +31,13 @@ USD和CNY的价格怎么确定呢？牛蛙见多识广，说按照火币和邮�
 
 # 优势
 
-   * 资金安全，不用担心对方跑路或赖账
+   * 资金安全，不用担心对方跑路或赖账，几乎杜绝交易风险，没有诈骗生成的空间
 
    * 上述（USD，CNY）交易对的故事可以推广到（BTC,CNY）,(LTC,CNY),(JPY,CNY)等别的加密货币和外汇
 
    * 没有中心化的网关或者localBitcoins场外交易这样的中心化撮合网站。无论面临何种外部压力，都能像比特币系统一样不停机工作
 
-   * 没有充值费或者提现费（除了银行的转账费用外）
+   * 最便宜的交易方法，没有充值费或者提现费（除了银行的转账费用外）
 
 # 劣势
 
