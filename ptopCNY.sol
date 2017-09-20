@@ -72,6 +72,8 @@ contract PtopFiatCurrencies {
     function withdrawPledge() returns (bool) {
         require(cashPledge[msg.sender].cashPledge>0);
         require(!cashPledge[msg.sender].locked);
+        msg.sender.transfer(cashPledge[msg.sender].cashPledge);
+        return true;
     }
 
     function askArbitrator(address _alex) returns (bool) {}
