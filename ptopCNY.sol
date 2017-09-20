@@ -69,9 +69,16 @@ contract PtopFiatCurrencies {
         return true;
     }
 
-    function withdrawPledge() returns (bool) {}
+    function withdrawPledge() returns (bool) {
+        require(cashPledge[msg.sender].cashPledge>0);
+        require(!cashPledge[msg.sender].locked);
+    }
 
     function askArbitrator(address _alex) returns (bool) {}
 
     function arbitrate(address _bob, address _alice, bytes32 _hash) returns (bool) {}
+
+    function () payable {
+        cashPledge[msg.sender].cashPledge += msg.value;
+    }
 }
