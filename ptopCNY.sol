@@ -25,6 +25,7 @@ contract PtopFiatCurrencies {
     event StartDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event EndDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event AskArbitrator(address _arbitrator, bytes32 _hash);
+    event UnlockCashpledge(bytes32 _hash);
 
     function startPtopDeposit(address _party, bytes32 _hash, uint256 _blockNumForTransfer, uint256 _blockNumForAskAbitrator) returns (bool) {
         require(msg.sender!=_party);
@@ -96,7 +97,18 @@ contract PtopFiatCurrencies {
         return true;
     }
 
-    function arbitrate(address _bob, address _alice, bytes32 _hash) returns (bool) {}
+    function arbitrate(address _bob, address _alice, bytes32 _hash, bool _result) returns (bool) {
+        
+    }
+
+    function unlockCashpledge(bytes32 _hash) returns (bool) {
+        require(cashPledge[msg.sender].locked);        
+        require(block.number > signRecord[_hash].blockNumForAskAbitrator + signRecord[_hash].startBlock + signRecord[_hash].blockNumForTransfer);
+        require(msg.sender == signRecord[_hash].aliceBank || msg.sender == signRecord[_hash].bobCustomer);
+        cashPledge[msg.sender].locked = false;
+        UnlockCashpledge(_hash);
+        return true;
+    }
 
     function () payable {
         cashPledge[msg.sender].cashPledge += msg.value;
