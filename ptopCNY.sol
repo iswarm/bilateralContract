@@ -17,6 +17,7 @@ contract PtopFiatCurrencies {
     struct PledgeStatus {
         uint256 cashPledge;
         bool locked;
+        
     }
 
     mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况
@@ -26,6 +27,7 @@ contract PtopFiatCurrencies {
     event EndDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event AskArbitrator(address _arbitrator, bytes32 _hash);
     event UnlockCashpledge(bytes32 _hash);
+    event Arbitrate(address _bob, address _alice, bytes32 _hash, bool _bobResult);
 
     function startPtopDeposit(address _party, bytes32 _hash, uint256 _blockNumForTransfer, uint256 _blockNumForAskAbitrator) returns (bool) {
         require(msg.sender!=_party);
@@ -97,7 +99,34 @@ contract PtopFiatCurrencies {
         return true;
     }
 
-    function arbitrate(address _bob, address _alice, bytes32 _hash, bool _result) returns (bool) {
+    function arbitrate(address _bob, address _alice, bytes32 _hash, bool _bobResult) returns (bool) {
+        require(msg.sender == signRecord[_hash].arbitrator);
+        cashPledge[msg.sender].locked = true;
+        if (signRecord[_hash].aliceBank == _alice && signRecord[_hash].bobCustomer == _bob ) {
+            signRecord[_hash].arbitrateResult = _bobResult;
+        } else if (signRecord[_hash].aliceBank == _bob && signRecord[_hash].bobCustomer == _alice) {
+            if (true == _bobResult) {
+                 signRecord[_hash].arbitrateResult = false;
+            } else {
+                signRecord[_hash].arbitrateResult = true;
+            }
+        }
+
+        if (true == signRecord[_hash].arbitrateResult) {
+            // 说明Alice并没有转等值的加密数字货币给Bob
+            uint256 alicePledge = cashPledge[signRecord[_hash].aliceBank].cashPledge;
+            msg.sender.transfer(alicePledge / 10);
+            address bobCustomer = signRecord[_hash].bobCustomer;
+            bobCustomer.transfer(alicePledge - alicePledge / 10);
+            cashPledge[signRecord[_hash].aliceBank].cashPledge = 0;
+            cashPledge[signRecord[_hash].aliceBank].locked = false;
+            Arbitrate(_bob,  _alice,  _hash,  _bobResult);
+        } else {
+            // 哦，系统出错：Alice按约定转出了，但Bob没在约定时间内收到。我也不知道怎么办。
+            Arbitrate(_bob,  _alice,  _hash,  _bobResult); 
+        }
+
+        return true;
         
     }
 
