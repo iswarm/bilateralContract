@@ -22,6 +22,7 @@ contract PtopFiatCurrencies {
 
     mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况
     mapping(address => PledgeStatus) public cashPledge; // 记录aliceBank的押金
+    address public owner;
 
     event StartDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event EndDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
@@ -75,7 +76,7 @@ contract PtopFiatCurrencies {
          
 
         cashPledge[signRecord[_hash].aliceBank].locked = false; // 释放押金
-
+        owner.transfer(cashPledge[signRecord[_hash].aliceBank].cashPledge/1000); // 收取充值押金的千分之一
         EndDeposit(signRecord[_hash].aliceBank,signRecord[_hash].bobCustomer,_hash);
 
         return true;
@@ -115,6 +116,8 @@ contract PtopFiatCurrencies {
         if (true == signRecord[_hash].arbitrateResult) {
             // 说明Alice并没有转等值的加密数字货币给Bob
             uint256 alicePledge = cashPledge[signRecord[_hash].aliceBank].cashPledge;
+            owner.transfer(alicePledge/1000); // 收取充值押金的千分之一
+            alicePledge = alicePledge - alicePledge/1000;
             msg.sender.transfer(alicePledge / 10);
             address bobCustomer = signRecord[_hash].bobCustomer;
             bobCustomer.transfer(alicePledge - alicePledge / 10);
