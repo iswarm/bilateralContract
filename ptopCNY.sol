@@ -87,6 +87,7 @@ contract PtopFiatCurrencies {
         require(!cashPledge[msg.sender].locked);
         // require(block.number>)
         msg.sender.transfer(cashPledge[msg.sender].cashPledge);
+        cashPledge[msg.sender].cashPledge = 0;
         return true;
     }
 
