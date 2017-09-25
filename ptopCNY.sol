@@ -67,9 +67,14 @@ contract PtopFiatCurrencies {
         
         if (msg.sender == signRecord[_hash].aliceBank && _party == signRecord[_hash].bobCustomer) {
             signRecord[_hash].signedBank[1] = true;
-            return true;
+            if (!signRecord[_hash].signedCustomer[1]) {
+                return true;
+            }
         } else if (msg.sender == signRecord[_hash].bobCustomer && _party == signRecord[_hash].aliceBank) {
             signRecord[_hash].signedCustomer[1] = true;
+            if (!signRecord[_hash].signedBank[1]) {
+                return true;
+            }
         } else {
             return false;
         }
