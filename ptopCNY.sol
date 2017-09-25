@@ -32,7 +32,7 @@ contract PtopFiatCurrencies {
 
     function startPtopDeposit(address _party, bytes32 _hash, uint256 _blockNumForTransfer, uint256 _blockNumForAskAbitrator) returns (bool) {
         require(msg.sender!=_party);
-        require(cashPledge[signRecord[_hash].aliceBank].cashPledge>10**18 && !cashPledge[signRecord[_hash].aliceBank].locked); // 检查数字资产持有方的ETH余额大于零且没有作为押金
+        require((cashPledge[msg.sender].cashPledge>10**18 && !cashPledge[msg.sender].locked) || (cashPledge[_party].cashPledge>10**18 && !cashPledge[_party].locked)); // 检查数字资产持有方的ETH余额大于零且没有作为押金
         
         // 检查签名
 
