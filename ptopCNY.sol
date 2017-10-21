@@ -15,13 +15,19 @@ contract PtopFiatCurrencies {
     }
 
     struct PledgeStatus {
-        uint256 cashPledge;
-        bool locked;
+        uint256 cashPledge; // 交易双方中数字货币持有方的押金
+        bool locked; // 押金是否已经在别的交易中抵押
         
+    }
+
+    struct Arbitrator {
+        uint256 cash; // 仲裁人的押金
+        bool locked; // 是否因正在应仲裁某笔交易仲裁人的押金被锁定
     }
 
     mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况
     mapping(address => PledgeStatus) public cashPledge; // 记录aliceBank的押金
+    mapping(address => Arbitrator) public arbitrators; // 记录仲裁人的押金
     address public owner;
 
     event StartDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
@@ -100,10 +106,23 @@ contract PtopFiatCurrencies {
         return true;
     }
 
+    function beArbitrator() payable returns(bool) {
+        require(msg.value >= 5 ether);               // 至少存5个ETH到智能合约
+        arbitrators[msg.sender].cash = msg.value;
+    }
+
+    function quitArbitrator() returns (bool) {
+        require(arbitrators[msg.sender].cash >0);
+        require(!arbitrators[msg.sender].locked);
+        msg.sender.transfer(arbitrators[msg.sender].cash);
+        delete arbitrators[msg.sender];
+
+    }
+
     function askArbitrator(address _arbitrator, bytes32 _hash) returns (bool) {
         require(block.number >= signRecord[_hash].startBlock + signRecord[_hash].blockNumForTransfer); // 检查进入仲裁请求时间段，但还没结束
         require(block.number <= signRecord[_hash].blockNumForAskAbitrator + signRecord[_hash].startBlock + signRecord[_hash].blockNumForTransfer);
-        require(cashPledge[_arbitrator].cashPledge>0);
+        require(arbitrators[_arbitrator].cashPledge>0);
         require(!cashPledge[_arbitrator].locked);
         signRecord[_hash].arbitrator = _arbitrator;
         AskArbitrator(_arbitrator,_hash);
@@ -112,7 +131,7 @@ contract PtopFiatCurrencies {
 
     function arbitrate(address _bob, address _alice, bytes32 _hash, bool _bobResult) returns (bool) {
         require(msg.sender == signRecord[_hash].arbitrator);
-        cashPledge[msg.sender].locked = true;
+        arbitrators[msg.sender].locked = true;
         if (signRecord[_hash].aliceBank == _alice && signRecord[_hash].bobCustomer == _bob ) {
             signRecord[_hash].arbitrateResult = _bobResult;
         } else if (signRecord[_hash].aliceBank == _bob && signRecord[_hash].bobCustomer == _alice) {
