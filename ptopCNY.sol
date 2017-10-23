@@ -25,19 +25,43 @@ contract PtopFiatCurrencies {
         bool locked; // 是否因正在应仲裁某笔交易仲裁人的押金被锁定
     }
 
+    struct Insurance {
+        uint256 amount; // 保费
+        // bytes32 depositHash; // 充值Hash
+        uint256 startBlockNum; // 保险有效期开始区块
+        //uint256 endBlockNum;
+    }
+
     mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况
     mapping(address => PledgeStatus) public cashPledge; // 记录aliceBank的押金
     mapping(address => Arbitrator) public arbitrators; // 记录仲裁人的押金
+    mapping(address => mapping(bytes32 => Insurance) ) public insurances; // 保险购买记录
     address public owner;
+    uint256 public constant validPeriod = 15*4*60*24*3; // 保险有效期3天
 
     event StartDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event EndDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event AskArbitrator(address _arbitrator, bytes32 _hash);
     event UnlockCashpledge(bytes32 _hash);
     event Arbitrate(address _bob, address _alice, bytes32 _hash, bool _bobResult);
+    event ApplyInsurance(address _applyer, bytes32 _hash,  uint256 _amount);
 
     function PtopFiatCurrencies() {
         owner = 0x1eB3162901545cB116b780f3456186b5D1396142;
+    }
+
+    function applyInsurance(bytes32 _hash) payable returns(bool) {
+        insurances[msg.sender][_hash].amount = msg.value;
+        //insurances[msg.sender][_hash] = _hash;
+        insurances[msg.sender][_hash].startBlockNum = block.number;
+        ApplyInsurance(msg.sender, _hash, msg.value);
+        return true;
+    }
+
+    function claimInsurance(bytes32 _hash) returns(bool) {
+        require(insurances[msg.sender][_hash].amount > 0);
+        require(insurances[msg.sender][_hash].startBlockNum + validPeriod > block.number);
+        // 需要申请理赔交易方和保险服务商多签名
     }
 
     function startPtopDeposit(address _party, bytes32 _hash, uint256 _blockNumForTransfer, uint256 _blockNumForAskAbitrator) returns (bool) {
