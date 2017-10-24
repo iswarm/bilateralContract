@@ -5,12 +5,18 @@ contract PtopFiatCurrencies {
     struct Signers {
         address aliceBank;
         address bobCustomer;
-        bool[2] signedBank;
-        bool[2] signedCustomer;
+        bool signedBank;
+        bool signedCustomer;        
+    }
+
+    struct PtopTransaction {
+        address aliceBank;
+        address bobCustomer;
         uint256 blockNumForTransfer;
         uint256 blockNumForAskAbitrator;
         uint256 startBlock;
         address arbitrator;
+        bool bEnd; // 记录是否结束
         bool arbitrateResult; // true: bobCustomer win; false 
     }
 
@@ -32,7 +38,8 @@ contract PtopFiatCurrencies {
         //uint256 endBlockNum;
     }
 
-    mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况
+    mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况 bytes32 指 sha3(msg.data)
+    mapping(bytes32 => PtopTransaction ) pTransactions; // 记录一个P2P 交易状态，bytes32 指被调用函数的输入参数中的_hash
     mapping(address => PledgeStatus) public cashPledge; // 记录aliceBank的押金
     mapping(address => Arbitrator) public arbitrators; // 记录仲裁人的押金
     mapping(address => mapping(bytes32 => Insurance) ) public insurances; // 保险购买记录
@@ -68,55 +75,65 @@ contract PtopFiatCurrencies {
         require(msg.sender!=_party);
         require((cashPledge[msg.sender].cashPledge>10**18 && !cashPledge[msg.sender].locked) || (cashPledge[_party].cashPledge>10**18 && !cashPledge[_party].locked)); // 检查数字资产持有方的ETH余额大于零且没有作为押金
         
-        // 检查签名
+        // 记录签名: msg.data 完整的calldata，包括msg.sig,即被调用的智能合约的方法编码的前四个字节和调用参数
 
-        if (!signRecord[_hash].signedBank[0]) {
-            signRecord[_hash].aliceBank = msg.sender;
-            signRecord[_hash].bobCustomer = _party;
-            signRecord[_hash].signedBank[0] = true;
+        if (!signRecord[sha3(msg.data)].signedBank) {
+            signRecord[sha3(msg.data)].aliceBank = msg.sender; // 要求数字货币持有方，即智能合约押金方首先调用这个方法
+            signRecord[sha3(msg.data)].bobCustomer = _party;
+            signRecord[sha3(msg.data)].signedBank = true;
             return true;
-        } else if ( (msg.sender == signRecord[_hash].bobCustomer) && (signRecord[_hash].aliceBank == _party) && (!signRecord[_hash].signedCustomer[0]) ) {
-            signRecord[_hash].signedCustomer[0] = true;
+        } else if ( (msg.sender == signRecord[sha3(msg.data)].bobCustomer) && (signRecord[sha3(msg.data)].aliceBank == _party) && (!signRecord[sha3(msg.data)].signedCustomer) ) {
+            signRecord[sha3(msg.data)].signedCustomer = true;
         } else {
             return false;
         }     
-        cashPledge[signRecord[_hash].aliceBank].locked = true; // 数字资产持有方的ETH用做押金：只能在一次交易中使用
-        signRecord[_hash].startBlock = block.number;
-        signRecord[_hash].blockNumForTransfer = _blockNumForTransfer; // 转账所需时间（转换为区块数，出一个块的时间平均14s。）
-        signRecord[_hash].blockNumForAskAbitrator = _blockNumForAskAbitrator; // 可以请求仲裁的时间（转换为区块数）
+        cashPledge[signRecord[sha3(msg.data)].aliceBank].locked = true; // 数字资产持有方的ETH用做押金：只能在一次交易中使用
+        pTransactions[_hash].startBlock = block.number;
+        pTransactions[_hash].blockNumForTransfer = _blockNumForTransfer; // 转账所需时间（转换为区块数，出一个块的时间平均14s。）
+        pTransactions[_hash].blockNumForAskAbitrator = _blockNumForAskAbitrator; // 可以请求仲裁的时间（转换为区块数）
+        pTransactions[_hash].aliceBank = signRecord[sha3(msg.data)].aliceBank;
+        pTransactions[_hash].bobCustomer = signRecord[sha3(msg.data)].bobCustomer;
 
-        StartDeposit(signRecord[_hash].aliceBank,signRecord[_hash].bobCustomer,_hash);
+        StartDeposit(pTransactions[_hash].aliceBank,pTransactions[_hash].bobCustomer,_hash);
 
         return true;
 
     }
 
+    /* function twoSigned(byte32 _operation) internal returns (bool) {
+
+    } */
+
     function endPtopDeposit(address _party, bytes32 _hash) returns (bool) {
         require(msg.sender!=_party);
-        require(cashPledge[signRecord[_hash].aliceBank].locked);
-        require(signRecord[_hash].signedBank[0]);
-        require(signRecord[_hash].signedCustomer[0]);
+        require(pTransactions[_hash].aliceBank == msg.sender || pTransactions[_hash].aliceBank == _party);
+        require(pTransactions[_hash].bobCustomer == msg.sender || pTransactions[_hash].bobCustomer == _party);
+        require(cashPledge[pTransactions[_hash].aliceBank].locked);
+        require(!pTransactions[_hash].bEnd);
+        //require(signRecord[sha3(msg.data)].signedBank[0]);
+        //require(signRecord[sha3(msg.data)].signedCustomer[0]);
 
-        // 检查签名
+        // 记录签名
         
-        if (msg.sender == signRecord[_hash].aliceBank && _party == signRecord[_hash].bobCustomer) {
-            signRecord[_hash].signedBank[1] = true;
-            if (!signRecord[_hash].signedCustomer[1]) {
-                return true;
-            }
-        } else if (msg.sender == signRecord[_hash].bobCustomer && _party == signRecord[_hash].aliceBank) {
-            signRecord[_hash].signedCustomer[1] = true;
-            if (!signRecord[_hash].signedBank[1]) {
-                return true;
-            }
+        // 记录签名: msg.data 完整的calldata，包括msg.sig,即被调用的智能合约的方法编码的前四个字节和调用参数
+
+        if (!signRecord[sha3(msg.data)].signedBank) {
+            signRecord[sha3(msg.data)].aliceBank = msg.sender; // 要求数字货币持有方，即智能合约押金方首先调用这个方法
+            signRecord[sha3(msg.data)].bobCustomer = _party;
+            signRecord[sha3(msg.data)].signedBank = true;
+            return true;
+        } else if ( (msg.sender == signRecord[sha3(msg.data)].bobCustomer) && (signRecord[sha3(msg.data)].aliceBank == _party) && (!signRecord[sha3(msg.data)].signedCustomer) ) {
+            signRecord[sha3(msg.data)].signedCustomer = true;
         } else {
             return false;
-        }
+        }     
          
 
-        cashPledge[signRecord[_hash].aliceBank].locked = false; // 释放押金
-        owner.transfer(cashPledge[signRecord[_hash].aliceBank].cashPledge/1000); // 收取充值押金的千分之一
-        EndDeposit(signRecord[_hash].aliceBank,signRecord[_hash].bobCustomer,_hash);
+        cashPledge[pTransactions[_hash].aliceBank].locked = false; // 释放押金
+        uint256 reducePledge = cashPledge[pTransactions[_hash].aliceBank].cashPledge;
+        owner.transfer(reducePledge/1000); // 收取充值押金的千分之一
+        cashPledge[pTransactions[_hash].aliceBank].cashPledge =  reducePledge - reducePledge/1000;
+        EndDeposit(pTransactions[_hash].aliceBank,pTransactions[_hash].bobCustomer,_hash);
 
         return true;
     }
@@ -142,9 +159,9 @@ contract PtopFiatCurrencies {
         delete arbitrators[msg.sender];
 
     }
-
+    // 对一个智能合约方法多签名后才能执行，思考：与对一个交易_hash多签名的区别
     function askArbitrator(address _arbitrator, bytes32 _hash) returns (bool) {
-        require(block.number >= signRecord[_hash].startBlock + signRecord[_hash].blockNumForTransfer); // 检查进入仲裁请求时间段，但还没结束
+        require(block.number >= signRecord[sha3(msg.data)].startBlock + signRecord[_hash].blockNumForTransfer); // 检查进入仲裁请求时间段，但还没结束
         require(block.number <= signRecord[_hash].blockNumForAskAbitrator + signRecord[_hash].startBlock + signRecord[_hash].blockNumForTransfer);
         require(arbitrators[_arbitrator].cashPledge>0);
         require(!cashPledge[_arbitrator].locked);
