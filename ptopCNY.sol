@@ -40,6 +40,11 @@ contract PtopFiatCurrencies {
         bool bGetInsurance;
     }
 
+    struct InsurFund {
+        uint256 amount;
+        uint256 numBonus; // 是否参与了第numBonus分红：numBonus<系统分红次数，则没有提取分红；否则已经提取分红。可以一次性提取多次分红。
+    }
+
     mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况 bytes32 指 sha3(msg.data)
     mapping(bytes32 => PtopTransaction ) pTransactions; // 记录一个P2P 交易状态，bytes32 指被调用函数的输入参数中的_hash
     mapping(address => PledgeStatus) public cashPledge; // 记录aliceBank的押金
@@ -53,8 +58,10 @@ contract PtopFiatCurrencies {
     address[] public managerInsurance; // 保险经理人团队
     uint256 numManager;
     mapping(address => uint256 ) public indexManagerInsurance; // 保险经理人团队索引
-    mapping(address => uint256 ) public insuranceFund; // 保险基金：address投入至少5个ether作为保险资金池，投资基金可以做manager
+    mapping(address => InsurFund ) public insuranceFund; // 保险基金：address投入至少5个ether作为保险资金池，投资基金可以做manager
+    uint256 public numBonus; // 系统第numBonus次分红
     uint256 public insuranceFundTotal;
+    uint256 public bonusTotal; // 被提取的分红总额
 
     event StartDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event EndDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
@@ -114,7 +121,7 @@ contract PtopFiatCurrencies {
     function fundInsurance() payable returns(bool) {
         require(msg.value > 5 ether);
         require(insuranceFundTotal < 1000*3 ether);
-        insuranceFund[msg.sender] += msg.value;
+        insuranceFund[msg.sender].amount += msg.value;
         insuranceFundTotal += msg.value;
         FundInsurance(msg.sender,msg.value);
         return true;
@@ -122,7 +129,7 @@ contract PtopFiatCurrencies {
     
     // 至少需要投入25 ether
     function beManagerInsurance() returns(bool) {
-        require(insuranceFund[msg.sender] >= 25 ether);
+        require(insuranceFund[msg.sender].amount >= 25 ether);
         managerInsurance.push(msg.sender);
 
         numManager += 1;
@@ -132,24 +139,24 @@ contract PtopFiatCurrencies {
     }
 
     function withdrawFundInsurance() returns(bool) {
-        require(insuranceFund[msg.sender]>0);
+        require(insuranceFund[msg.sender].amount>0);
         if (indexManagerInsurance[msg.sender]>0) {
             indexManagerInsurance[msg.sender] = 0;
         }
 
-        msg.sender.transfer(insuranceFund[msg.sender]);
-        insuranceFundTotal -= insuranceFund[msg.sender];
-        WithdrawFundInsurance(msg.sender, insuranceFund[msg.sender]);
-        insuranceFund[msg.sender] = 0;
+        msg.sender.transfer(insuranceFund[msg.sender].amount);
+        insuranceFundTotal -= insuranceFund[msg.sender].amount;
+        WithdrawFundInsurance(msg.sender, insuranceFund[msg.sender].amount);
+        insuranceFund[msg.sender].amount = 0;
         
         return true;
     }
 
     // 分红
     function getBonus() returns(bool) {
-        
+        // require(numBonus > insuranceFund[msg.sender].numBonus);
         require(insuranceSaleTotal - insuranceClaimTotal >= 600 ether);
-        msg.sender.transfer(insuranceFund[msg.sender]);
+        msg.sender.transfer(insuranceFund[msg.sender].amount);
     }
 
     /* ** End: Insurance
@@ -252,7 +259,7 @@ contract PtopFiatCurrencies {
         delete arbitrators[msg.sender];
 
     }
-    // 对一个智能合约方法多签名后才能执行，思考：与对一个交易_hash多签名的区别
+    
     function askArbitrator(address _arbitrator, bytes32 _hash) returns (bool) {
         require(block.number >= pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer); // 检查进入仲裁请求时间段，但还没结束
         require(block.number <= pTransactions[_hash].blockNumForAskAbitrator + pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer);
@@ -308,4 +315,8 @@ contract PtopFiatCurrencies {
     function () payable {
         cashPledge[msg.sender].cashPledge += msg.value;
     }
+
+    /* ** End deposit
+    
+    */ 
 }
