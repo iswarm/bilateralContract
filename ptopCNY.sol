@@ -1,26 +1,10 @@
 pragma solidity ^0.4.15;
 
-contract PtopFiatCurrencies {
+import "./BothSigners.sol";
 
-    struct Signers {
-        address aliceBank;
-        address bobCustomer;
-        bool signedBank;
-        bool signedCustomer;        
-    }
+contract Bilateral is BothSigners {
 
-    struct PtopTransaction {
-        address aliceBank;
-        address bobCustomer;
-        uint256 blockNumForTransfer;
-        uint256 blockNumForAskAbitrator;
-        uint256 startBlock;
-        address arbitrator;
-        
-        bool bEnd; // 记录是否结束
-        bool arbitrateResult; // true: bobCustomer win; false 
-    }
-
+    
     struct PledgeStatus {
         uint256 cashPledge; // 交易双方中数字货币持有方的押金
         bool locked; // 押金是否已经在别的交易中抵押
@@ -32,136 +16,27 @@ contract PtopFiatCurrencies {
         bool locked; // 是否因正在应仲裁某笔交易仲裁人的押金被锁定
     }
 
-    struct Insurance {
-        uint256 amount; // 保费
-        // bytes32 depositHash; // 充值Hash
-        uint256 startBlockNum; // 保险有效期开始区块
-        //uint256 endBlockNum;
-        bool bGetInsurance;
-    }
-
-    struct InsurFund {
-        uint256 amount;
-        uint256 numBonus; // 是否参与了第numBonus分红：numBonus<系统分红次数，则没有提取分红；否则已经提取分红。可以一次性提取多次分红。
-    }
-
-    mapping(bytes32 => Signers) public signRecord; // 记录一个函数调用的签名双方及签名情况 bytes32 指 sha3(msg.data)
-    mapping(bytes32 => PtopTransaction ) pTransactions; // 记录一个P2P 交易状态，bytes32 指被调用函数的输入参数中的_hash
+    
+    
     mapping(address => PledgeStatus) public cashPledge; // 记录aliceBank的押金
     mapping(address => Arbitrator) public arbitrators; // 记录仲裁人的押金
-    mapping(address => mapping(bytes32 => Insurance) ) public insurances; // 保险购买记录
-    uint256 public insuranceSaleTotal;
-    uint256 public insuranceClaimTotal;
+    
+    
     address public owner;
-    uint256 public constant validPeriod = 15*4*60*24*3; // 保险有效期3天
-    uint256 public amountInsurance; // 每份保险的保费
-    address[] public managerInsurance; // 保险经理人团队
-    uint256 numManager;
-    mapping(address => uint256 ) public indexManagerInsurance; // 保险经理人团队索引
-    mapping(address => InsurFund ) public insuranceFund; // 保险基金：address投入至少5个ether作为保险资金池，投资基金可以做manager
-    uint256 public numBonus; // 系统第numBonus次分红
-    uint256 public insuranceFundTotal;
-    uint256 public bonusTotal; // 被提取的分红总额
+    
 
     event StartDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event EndDeposit(address _aliceBank, address _bobCustomer, bytes32 _hash);
     event AskArbitrator(address _arbitrator, bytes32 _hash);
     event UnlockCashpledge(bytes32 _hash);
     event Arbitrate(address _bob, address _alice, bytes32 _hash, bool _bobResult);
-    event ApplyInsurance(address _applyer, bytes32 _hash,  uint256 _amount);
-    event ClaimInsurance(address _buyer, uint256 _amountInsurance);
-    event FundInsurance(address _funder, uint256 _amountFund);
-    event BeManagerInsurance(address _manager);
+    
 
-    function PtopFiatCurrencies() {
+    function Bilateral() public {
         owner = 0x1eB3162901545cB116b780f3456186b5D1396142;
-        amountInsurance = 0.0005 ether;
-        managerInsurance.push(owner);
-        indexManagerInsurance[owner] = 1; 
-        numManager = 1;
     }
 
-    /* ** Begin: Insurance
-
-     */
-    function applyInsurance(bytes32 _hash) payable returns(bool) {
-        require(msg.value >= amountInsurance);
-        insurances[msg.sender][_hash].amount = msg.value;
-        //insurances[msg.sender][_hash] = _hash;
-        insurances[msg.sender][_hash].startBlockNum = block.number;
-        ApplyInsurance(msg.sender, _hash, msg.value);
-        return true;
-    }
-
-    // 需要申请理赔交易方和保险服务商多签名
-    function claimInsurance(bytes32 _hash) returns(bool) {
-        require(insurances[pTransactions[_hash].bobCustomer][_hash].amount > 0);
-        require(insurances[pTransactions[_hash].bobCustomer][_hash].startBlockNum + validPeriod > block.number);
-        
-        if ( (msg.sender == pTransactions[_hash].bobCustomer || msg.sender ==pTransactions[_hash].aliceBank) && (!signRecord[sha3(msg.data)].signedCustomer) ) {
-            signRecord[sha3(msg.data)].bobCustomer = msg.sender;
-            signRecord[sha3(msg.data)].signedCustomer = true;
-            return true;
-        } else if (msg.sender == managerInsurance[indexManagerInsurance[msg.sender]-1] && (!signRecord[sha3(msg.data)].signedBank) ) {
-            signRecord[sha3(msg.data)].aliceBank = msg.sender;
-            signRecord[sha3(msg.data)].signedBank = true;
-        } else {
-            return false;
-        }
-
-
-        if (signRecord[sha3(msg.data)].signedCustomer && signRecord[sha3(msg.data)].signedBank) {
-            uint256 getAmount = cashPledge[pTransactions[_hash].aliceBank].cashPledge * 9 / 10;
-            signRecord[sha3(msg.data)].bobCustomer.transfer(getAmount);
-            ClaimInsurance(pTransactions[_hash].bobCustomer, getAmount);
-        }
-        return true;
-    }
-
-    function fundInsurance() payable returns(bool) {
-        require(msg.value > 5 ether);
-        require(insuranceFundTotal < 1000*3 ether);
-        insuranceFund[msg.sender].amount += msg.value;
-        insuranceFundTotal += msg.value;
-        FundInsurance(msg.sender,msg.value);
-        return true;
-    }
     
-    // 至少需要投入25 ether
-    function beManagerInsurance() returns(bool) {
-        require(insuranceFund[msg.sender].amount >= 25 ether);
-        managerInsurance.push(msg.sender);
-
-        numManager += 1;
-        indexManagerInsurance[msg.sender] = numManager;
-        BeManagerInsurance(msg.sender);
-        return true;
-    }
-
-    function withdrawFundInsurance() returns(bool) {
-        require(insuranceFund[msg.sender].amount>0);
-        if (indexManagerInsurance[msg.sender]>0) {
-            indexManagerInsurance[msg.sender] = 0;
-        }
-
-        msg.sender.transfer(insuranceFund[msg.sender].amount);
-        insuranceFundTotal -= insuranceFund[msg.sender].amount;
-        WithdrawFundInsurance(msg.sender, insuranceFund[msg.sender].amount);
-        insuranceFund[msg.sender].amount = 0;
-        
-        return true;
-    }
-
-    // 分红
-    function getBonus() returns(bool) {
-        // require(numBonus > insuranceFund[msg.sender].numBonus);
-        require(insuranceSaleTotal - insuranceClaimTotal >= 600 ether);
-        msg.sender.transfer(insuranceFund[msg.sender].amount);
-    }
-
-    /* ** End: Insurance
-    
-     */
 
     /* ** Begin deposit
     
@@ -169,7 +44,7 @@ contract PtopFiatCurrencies {
 
     // _seller 和 _buyer 同时作为参数才能在双方提交时保持msg.data完全相同
 
-    function startPtopDeposit(address _seller, address _buyer, bytes32 _hash, uint256 _blockNumForTransfer, uint256 _blockNumForAskAbitrator) returns (bool) {
+    function startPtopDeposit(address _seller, address _buyer, bytes32 _hash, uint256 _blockNumForTransfer, uint256 _blockNumForAskAbitrator) public returns (bool) {
         require(_seller != _buyer);
         require(msg.sender==_seller || msg.sender == _buyer); // 保证签名的人是_seller 或 _buyer
         require((cashPledge[_seller].cashPledge>10**18 && !cashPledge[_seller].locked) /* || (cashPledge[_buyer].cashPledge>10**18 && !cashPledge[_buyer].locked) */); // 检查数字资产持有方的ETH余额大于零且没有作为押金
@@ -203,7 +78,7 @@ contract PtopFiatCurrencies {
 
     } */
 
-    function endPtopDeposit(address _seller, address _buyer, bytes32 _hash) returns (bool) {
+    function endPtopDeposit(address _seller, address _buyer, bytes32 _hash) public  returns (bool) {
         require(_seller != _buyer);
         require(msg.sender==_seller || msg.sender == _buyer); // 保证签名的人是_seller 或 _buyer
         require(pTransactions[_hash].aliceBank == _seller);
@@ -238,7 +113,7 @@ contract PtopFiatCurrencies {
         return true;
     }
 
-    function withdrawPledge() returns (bool) {
+    function withdrawPledge() public returns (bool) {
         require(cashPledge[msg.sender].cashPledge>0);
         require(!cashPledge[msg.sender].locked);
         // require(block.number>)
@@ -247,20 +122,20 @@ contract PtopFiatCurrencies {
         return true;
     }
 
-    function beArbitrator() payable returns(bool) {
+    function beArbitrator() payable public returns(bool) {
         require(msg.value >= 5 ether);               // 至少存5个ETH到智能合约
         arbitrators[msg.sender].cash = msg.value;
     }
 
-    function quitArbitrator() returns (bool) {
-        require(arbitrators[msg.sender].cash >0);
+    function quitArbitrator() public returns (bool) {
+        require(arbitrators[msg.sender].cash > 0);
         require(!arbitrators[msg.sender].locked);
         msg.sender.transfer(arbitrators[msg.sender].cash);
         delete arbitrators[msg.sender];
 
     }
     
-    function askArbitrator(address _arbitrator, bytes32 _hash) returns (bool) {
+    function askArbitrator(address _arbitrator, bytes32 _hash) public returns (bool) {
         require(block.number >= pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer); // 检查进入仲裁请求时间段，但还没结束
         require(block.number <= pTransactions[_hash].blockNumForAskAbitrator + pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer);
         require(arbitrators[_arbitrator].cashPledge>0);
@@ -270,7 +145,7 @@ contract PtopFiatCurrencies {
         return true;
     }
 
-    function arbitrate(address _seller, address _buyer, bytes32 _hash, bool _bobResult) returns (bool) {
+    function arbitrate(address _seller, address _buyer, bytes32 _hash, bool _bobResult) public returns (bool) {
         require(msg.sender == pTransactions[_hash].arbitrator);
         arbitrators[msg.sender].locked = true;
         if (pTransactions[_hash].aliceBank == _seller && pTransactions[_hash].bobCustomer == _buyer ) {
@@ -303,7 +178,7 @@ contract PtopFiatCurrencies {
         
     }
 
-    function unlockCashpledge(bytes32 _hash) returns (bool) {
+    function unlockCashpledge(bytes32 _hash) public returns (bool) {
         require(cashPledge[msg.sender].locked);        
         require(block.number > pTransactions[_hash].blockNumForAskAbitrator + pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer);
         require(msg.sender == pTransactions[_hash].aliceBank || msg.sender == pTransactions[_hash].bobCustomer);
