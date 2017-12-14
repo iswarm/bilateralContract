@@ -51,22 +51,22 @@ contract Bilateral is BothSigners {
         
         // 记录签名: msg.data 完整的calldata，包括msg.sig,即被调用的智能合约的方法编码的前四个字节和调用参数
 
-        if (msg.sender == _seller && !signRecord[sha3(msg.data)].signedBank) {
-            signRecord[sha3(msg.data)].aliceBank = _seller; // 要求数字货币持有方，即智能合约押金方首先调用这个方法
-            signRecord[sha3(msg.data)].bobCustomer = _buyer;
-            signRecord[sha3(msg.data)].signedBank = true;
+        if (msg.sender == _seller && !signRecord[keccak256(msg.data)].signedBank) {
+            signRecord[keccak256(msg.data)].aliceBank = _seller; // 要求数字货币持有方，即智能合约押金方首先调用这个方法
+            signRecord[keccak256(msg.data)].bobCustomer = _buyer;
+            signRecord[keccak256(msg.data)].signedBank = true;
             return true;
-        } else if ( (msg.sender == signRecord[sha3(msg.data)].bobCustomer) && (signRecord[sha3(msg.data)].aliceBank == _seller) && (!signRecord[sha3(msg.data)].signedCustomer) ) {
-            signRecord[sha3(msg.data)].signedCustomer = true;
+        } else if ( (msg.sender == signRecord[keccak256(msg.data)].bobCustomer) && (signRecord[keccak256(msg.data)].aliceBank == _seller) && (!signRecord[keccak256(msg.data)].signedCustomer) ) {
+            signRecord[keccak256(msg.data)].signedCustomer = true;
         } else {
             return false;
         }     
-        cashPledge[signRecord[sha3(msg.data)].aliceBank].locked = true; // 数字资产持有方的ETH用做押金：只能在一次交易中使用
+        cashPledge[signRecord[keccak256(msg.data)].aliceBank].locked = true; // 数字资产持有方的ETH用做押金：只能在一次交易中使用
         pTransactions[_hash].startBlock = block.number;
         pTransactions[_hash].blockNumForTransfer = _blockNumForTransfer; // 转账所需时间（转换为区块数，出一个块的时间平均14s。）
         pTransactions[_hash].blockNumForAskAbitrator = _blockNumForAskAbitrator; // 可以请求仲裁的时间（转换为区块数）
-        pTransactions[_hash].aliceBank = signRecord[sha3(msg.data)].aliceBank;
-        pTransactions[_hash].bobCustomer = signRecord[sha3(msg.data)].bobCustomer;
+        pTransactions[_hash].aliceBank = signRecord[keccak256(msg.data)].aliceBank;
+        pTransactions[_hash].bobCustomer = signRecord[keccak256(msg.data)].bobCustomer;
 
         StartDeposit(pTransactions[_hash].aliceBank,pTransactions[_hash].bobCustomer,_hash);
 
@@ -85,20 +85,20 @@ contract Bilateral is BothSigners {
         require(pTransactions[_hash].bobCustomer == _buyer);
         require(cashPledge[pTransactions[_hash].aliceBank].locked);
         require(!pTransactions[_hash].bEnd);
-        //require(signRecord[sha3(msg.data)].signedBank[0]);
-        //require(signRecord[sha3(msg.data)].signedCustomer[0]);
+        //require(signRecord[keccak256(msg.data)].signedBank[0]);
+        //require(signRecord[keccak256(msg.data)].signedCustomer[0]);
 
         // 记录签名
         
         // 记录签名: msg.data 完整的calldata，包括msg.sig,即被调用的智能合约的方法编码的前四个字节和调用参数
 
-        if (msg.sender == _seller && !signRecord[sha3(msg.data)].signedBank) {
-            signRecord[sha3(msg.data)].aliceBank = _seller; // 要求数字货币持有方，即智能合约押金方首先调用这个方法
-            signRecord[sha3(msg.data)].bobCustomer = _buyer;
-            signRecord[sha3(msg.data)].signedBank = true;
+        if (msg.sender == _seller && !signRecord[keccak256(msg.data)].signedBank) {
+            signRecord[keccak256(msg.data)].aliceBank = _seller; // 要求数字货币持有方，即智能合约押金方首先调用这个方法
+            signRecord[keccak256(msg.data)].bobCustomer = _buyer;
+            signRecord[keccak256(msg.data)].signedBank = true;
             return true;
-        } else if ( (msg.sender == signRecord[sha3(msg.data)].bobCustomer) && (signRecord[sha3(msg.data)].aliceBank == _seller) && (!signRecord[sha3(msg.data)].signedCustomer) ) {
-            signRecord[sha3(msg.data)].signedCustomer = true;
+        } else if ( (msg.sender == signRecord[keccak256(msg.data)].bobCustomer) && (signRecord[keccak256(msg.data)].aliceBank == _seller) && (!signRecord[keccak256(msg.data)].signedCustomer) ) {
+            signRecord[keccak256(msg.data)].signedCustomer = true;
         } else {
             return false;
         }     
@@ -138,7 +138,7 @@ contract Bilateral is BothSigners {
     function askArbitrator(address _arbitrator, bytes32 _hash) public returns (bool) {
         require(block.number >= pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer); // 检查进入仲裁请求时间段，但还没结束
         require(block.number <= pTransactions[_hash].blockNumForAskAbitrator + pTransactions[_hash].startBlock + pTransactions[_hash].blockNumForTransfer);
-        require(arbitrators[_arbitrator].cashPledge>0);
+        require(arbitrators[_arbitrator].cash>0);
         require(!cashPledge[_arbitrator].locked);
         pTransactions[_hash].arbitrator = _arbitrator;
         AskArbitrator(_arbitrator,_hash);
@@ -168,10 +168,10 @@ contract Bilateral is BothSigners {
             bobCustomer.transfer(alicePledge - alicePledge / 10);
             cashPledge[pTransactions[_hash].aliceBank].cashPledge = 0;
             cashPledge[pTransactions[_hash].aliceBank].locked = false;
-            Arbitrate(_bob,  _alice,  _hash,  _bobResult);
+            Arbitrate(_buyer,  _seller,  _hash,  _bobResult);
         } else {
             // 哦，系统出错：Alice按约定转出了，但Bob没在约定时间内收到。我也不知道怎么办。
-            Arbitrate(_bob,  _alice,  _hash,  _bobResult); 
+            Arbitrate(_buyer,  _seller,  _hash,  _bobResult); 
         }
 
         return true;
